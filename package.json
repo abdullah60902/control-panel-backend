@@ -1,11 +1,11 @@
 {
-  "name": "restfulapi-test",
+  "name": "restfulapi-panel",
   "version": "1.0.0",
   "description": "rest",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "test"
+    "test": "control"
   },
   "keywords": [
     "rest"
