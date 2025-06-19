@@ -8,7 +8,7 @@ const trainingSchema = new mongoose.Schema({
   },
   trainingType: {
     type: String,
-    enum: ["First Aid", "Fire Safety", "Moving & Handling", "Safeguarding", "GDRR","Infection Control", "Medication Administration" ,"Dementia Care"], // Add your types
+    enum: ["First Aid", "Fire Safety", "Moving & Handling", "Safeguarding", "GDPR","Infection Control", "Medication Administration" ,"Dementia Care"], // Add your types
     required: true
   },
   completionDate: {
