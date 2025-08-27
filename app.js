@@ -38,7 +38,9 @@ const medicationsRoute = require('./api/route/medications');
 const socialActivityRoutes = require("./api/route/socialActivity");
 const analytics = require('./api/route/analytics');
 const performanceRoutes = require("./api/route/performance");
+const StaffDocumentRoutes =require('./api/route/staffDocuments');
 
+app.use('/staff-documents', StaffDocumentRoutes);
 app.use("/performance", performanceRoutes);
 app.use("/social", socialActivityRoutes);
 app.use('/training', training);

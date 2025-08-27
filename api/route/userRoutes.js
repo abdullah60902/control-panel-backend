@@ -11,8 +11,9 @@ const CarePlanning = require('../model/CarePlanning');
 const JWT_SECRET = "do you know"; // In production use env variables
 
 // Signup route with special first user logic
+// Signup route with special first user logic
 router.post('/signup', async (req, res) => {
-  const { fullName, email, role, password, confirmPassword,clients  } = req.body;
+  const { fullName, email, role, password, confirmPassword, clients } = req.body;
 
   if (!fullName || !email || !role || !password || !confirmPassword) {
     return res.status(400).json({ msg: 'All fields are required' });
@@ -51,30 +52,25 @@ router.post('/signup', async (req, res) => {
     if (existingUser) {
       return res.status(400).json({ msg: 'Email already registered' });
     }
-if (clients && role === 'Client') {
-  const validClients = await Client.find({ _id: { $in: clients } });
 
-  const carePlans = await CarePlanning.find({ client: { $in: clients } });
-  const clientIdsWithCarePlans = carePlans.map(cp => cp.client.toString());
-
-  const invalidClients = clients.filter(id => !clientIdsWithCarePlans.includes(id));
-
-  if (invalidClients.length > 0) {
-    return res.status(400).json({ msg: "Some clients do not have care plans." });
-  }
-}
-
+    // ✅ Only validate clients exist in DB (not care plan)
+    if (clients && role === 'Client') {
+      const validClients = await Client.find({ _id: { $in: clients } });
+      if (validClients.length !== clients.length) {
+        return res.status(400).json({ msg: 'One or more client IDs are invalid' });
+      }
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = new User({
-  _id: new mongoose.Types.ObjectId(),
-  fullName,
-  email,
-  role,
-  password: hashedPassword,
-  clients: role === 'Client' ? clients : [], // ✅ only save if Client
-});
+      _id: new mongoose.Types.ObjectId(),
+      fullName,
+      email,
+      role,
+      password: hashedPassword,
+      clients: role === 'Client' ? clients : [], // ✅ Attach directly
+    });
 
     await newUser.save();
 
@@ -85,12 +81,14 @@ if (clients && role === 'Client') {
         fullName: newUser.fullName,
         email: newUser.email,
         role: newUser.role,
+        clients: newUser.clients
       },
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Server error' });
   }
 });
+
 
 // Login route (open to all)
 router.post('/login', async (req, res) => {
