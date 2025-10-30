@@ -5,7 +5,7 @@ const carePlanningSchema = new mongoose.Schema({
   planType: { type: String, required: true },
   creationDate: { type: Date, required: true },
   reviewDate: { type: Date, required: true },
-  carePlanDetails: { type: String, required: true },
+  carePlanDetails: { type: String,},
   careSetting: { type: String },
 
   // Care Plan Status

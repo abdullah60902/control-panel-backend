@@ -111,7 +111,7 @@ allowedPages: role === 'External'
 
         <p>For your security, please change your password after logging in for the first time.</p>
 
-        <a href="http://localhost:3000/login" 
+        <a href="https://control-panel-frontend-sc75.vercel.app/Login" 
            style="display: inline-block; background-color: #2563eb; color: white; text-decoration: none; 
            padding: 10px 20px; border-radius: 6px; font-weight: 500; margin-top: 10px;">
            Login to Your Account
