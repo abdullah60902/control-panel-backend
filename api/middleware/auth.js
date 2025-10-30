@@ -6,7 +6,12 @@ const verifyToken = (req, res, next) => {
 
   try {
     const verified = jwt.verify(token, "do you know"); // Match secret
-    req.user = verified;
+    // ✅ Ensure req.user includes all required fields
+    req.user = {
+      _id: verified.id,
+      role: verified.role,
+      email: verified.email, // ✅ fixed typo here
+    };
     next();
   } catch (err) {
     res.status(401).json({ msg: 'Invalid token' });

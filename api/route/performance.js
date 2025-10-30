@@ -15,14 +15,22 @@ router.post("/", verifyToken, allowRoles("Admin", "Staff"), async (req, res) => 
 });
 
 // 🔹 Get all performance records
-router.get("/", verifyToken, allowRoles("Admin", "Staff", "Client"), async (req, res) => {
-  try {
-    const performances = await Performance.find().populate("staff", "fullName");
-    res.status(200).json({ data: performances });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+router.get(
+  "/",
+  verifyToken,
+  allowRoles("Admin", "Staff", "External"),
+  async (req, res) => {
+    try {
+      console.log("🔍 Current user:", req.user); // 👈 Add this
+
+      const performances = await Performance.find().populate("staff", "fullName");
+      res.status(200).json({ data: performances });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
+
 
 // 🔹 Update a performance record
 router.put("/:id", verifyToken, allowRoles("Admin", "Staff"), async (req, res) => {

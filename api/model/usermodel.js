@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const client = require("./client");
 const { model } = mongoose;
 
 const userSchema = new mongoose.Schema({
@@ -15,7 +14,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['Admin', 'Staff', 'Client'],
+    enum: ['Admin', 'Staff', 'Client', 'External'], // 👈 Added External
     required: true
   },
   password: {
@@ -25,7 +24,16 @@ const userSchema = new mongoose.Schema({
   clients: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Client'
-  }]
+  }],
+  hr: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Hr",
+  },
+  mustChangePassword: {
+    type: Boolean,
+    default: false,
+  },
+  allowedPages: [String], // 👈 for checkboxes (page access)
 });
 
 module.exports = model("User", userSchema);

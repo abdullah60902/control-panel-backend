@@ -5,7 +5,7 @@ const { verifyToken, allowRoles } = require("../middleware/auth");
 const multer = require("multer");
 const { storage,cloudinary  } = require("../utils/cloudinary");
 const upload = multer({ storage });
-
+const User = require('../model/usermodel');
 // ✅ CREATE new activity
 router.post(
   "/",
@@ -32,30 +32,39 @@ router.post(
 router.get(
   "/",
   verifyToken,
-  allowRoles("Admin", "Staff", "Client", "Family"),
+  allowRoles("Admin", "Staff", "Client", "Family", "External"),
   async (req, res) => {
     try {
       let activities;
 
-      if (req.user.role === "Admin" || req.user.role === "Staff") {
+      // --- Admin, Staff, External: get all
+      if (["Admin", "Staff", "External"].includes(req.user.role)) {
         activities = await SocialActivity.find()
           .populate("client", "fullName")
           .populate("caregiver", "fullName")
           .sort({ createdAt: -1 });
+      }
 
-      } else if (req.user.role === "Client" || req.user.role === "Family") {
-        if (!req.user.clients || req.user.clients.length === 0) {
-          return res.status(200).json([]); // No attached clients
+      // --- Client or Family: only their attached clients
+      else if (["Client", "Family"].includes(req.user.role)) {
+        const user = await User.findById(req.user._id).populate("clients");
+
+        if (!user || !user.clients || user.clients.length === 0) {
+          return res.status(200).json([]); // no attached clients
         }
 
+        const allowedClientIds = user.clients.map((c) => c._id);
+
         activities = await SocialActivity.find({
-          client: { $in: req.user.clients },
-          caregiver: req.user.id,
+          client: { $in: allowedClientIds },
         })
           .populate("client", "fullName")
           .populate("caregiver", "fullName")
           .sort({ createdAt: -1 });
-      } else {
+      }
+
+      // --- Unauthorized
+      else {
         return res.status(403).json({ error: "Unauthorized access" });
       }
 

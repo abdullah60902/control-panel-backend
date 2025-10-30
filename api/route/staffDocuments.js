@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const { storage, cloudinary } = require("../utils/cloudinary");
+const {  cloudinary,storage } = require("../utils/cloudinary");
 const upload = multer({ storage });
 
 const StaffDocument = require("../model/StaffDocument");
@@ -49,15 +49,21 @@ router.post(
 // ==================
 // GET all documents
 // ==================
-router.get("/", verifyToken, allowRoles("Admin", "Staff"), async (req, res) => {
-  try {
-    const docs = await StaffDocument.find()
-      .populate("staffName", "fullName email position");
-    res.status(200).json(docs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+router.get(
+  "/",
+  verifyToken,
+  allowRoles("Admin", "Staff", "External"),
+  async (req, res) => {
+    try {
+      const docs = await StaffDocument.find()
+        .populate("staffName", "fullName email position");
+      res.status(200).json(docs);
+    } catch (err) {
+      console.error("Error fetching staff documents:", err);
+      res.status(500).json({ error: err.message });
+    }
   }
-});
+);
 
 // ==================
 // UPDATE Staff Document (replace old files if uploaded)

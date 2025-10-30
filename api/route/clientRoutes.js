@@ -40,16 +40,32 @@ router.post('/', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) => 
 });
 
 // ✅ READ ALL — Admin, Staff, Client/Family
-router.get('/', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family'), async (req, res) => {
+// ✅ READ ALL — Admin, Staff, Client, Family, External
+router.get('/', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family', 'External'), async (req, res) => {
   try {
-   let clients;
-if (req.user.role === 'Client') {
-  const user = await User.findById(req.user.id).populate('clients');
-  clients = user.clients;
-} else {
-  clients = await Client.find(); // Admin/Staff get all
-}
+    let clients;
 
+    // --- Client: only their assigned clients
+    if (req.user.role === 'Client') {
+      const user = await User.findById(req.user._id).populate('clients');
+      clients = user?.clients || [];
+    }
+
+    // --- Family: same as Client (assigned clients only)
+    else if (req.user.role === 'Family') {
+      const user = await User.findById(req.user._id).populate('clients');
+      clients = user?.clients || [];
+    }
+
+    // --- Admin, Staff, External: get all clients
+    else if (['Admin', 'Staff', 'External'].includes(req.user.role)) {
+      clients = await Client.find();
+    }
+
+    // --- Unauthorized role
+    else {
+      return res.status(403).json({ error: 'Unauthorized access' });
+    }
 
     const usedRooms = clients.map((client) => client.roomNumber);
     const TOTAL_ROOMS = Array.from({ length: 50 }, (_, i) => (i + 1).toString());
@@ -70,7 +86,7 @@ if (req.user.role === 'Client') {
 
 
 // ✅ READ ONE — Admin, Staff, Client/Family
-router.get('/:id', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family'), async (req, res) => {
+router.get('/:id', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family External'), async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ msg: "Client not found" });

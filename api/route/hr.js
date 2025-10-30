@@ -15,17 +15,34 @@ router.post("/", verifyToken, allowRoles("Admin"), async (req, res) => {
 });
 
 // ✅ Get all HR staff – Admin & Staff
-router.get("/", verifyToken, allowRoles("Admin", "Staff"), async (req, res) => {
-  try {
-    const allHr = await Hr.find();
-    res.status(200).json({
-      allHr,
-      totalstaff: allHr.length
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// ✅ Get all HR staff – Admin & Staff
+router.get(
+  "/",
+  verifyToken,
+  allowRoles("Admin", "Staff", "External"),
+  async (req, res) => {
+    try {
+      let allHr;
+
+      if (req.user.role === "Staff") {
+        // Staff ko sirf apna HR milega
+        allHr = await Hr.find({ _id: req.user.hr });
+      } else {
+        // Admin aur External ko sab HRs milenge
+        allHr = await Hr.find();
+      }
+
+      res.status(200).json({
+        allHr,
+        totalstaff: allHr.length,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
-});
+);
+
+
 
 // ✅ Get HR staff by ID – Admin & Staff
 router.get("/:id", verifyToken, allowRoles("Admin", "Staff"), async (req, res) => {

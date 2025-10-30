@@ -4,6 +4,7 @@ const hrSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
   email:    { type: String, required: true, unique: true },
   position: { type: String, required: true },
+
   department: {
     type: String,
     enum: ["Administration", "Nursing", "Management", "Care", "Support"], // Add more if needed

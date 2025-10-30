@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+const mongoose = require("mongoose")
 
 const carePlanAuditLogSchema = new mongoose.Schema(
   {
@@ -25,6 +25,6 @@ const carePlanAuditLogSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+  
 );
-
 module.exports = mongoose.model("CarePlanAuditLog", carePlanAuditLogSchema);
