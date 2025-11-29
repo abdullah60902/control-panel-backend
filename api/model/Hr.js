@@ -5,7 +5,7 @@ const hrSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
   firstName:{ type: String },
   surname: { type: String },
-  dob: { type: Date }, 
+  dob: { type: String }, 
   niNumber: { type: String },
 
   // 🔹 Contact & Address
