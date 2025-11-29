@@ -23,6 +23,7 @@ router.post(
     { name: "appraisalsReviews" },
     { name: "disciplinaryRecords" },
   ]),
+  
   async (req, res) => {
     try {
       const staffDoc = new StaffDocument({
@@ -49,21 +50,33 @@ router.post(
 // ==================
 // GET all documents
 // ==================
-router.get(
-  "/",
-  verifyToken,
-  allowRoles("Admin", "Staff", "External"),
-  async (req, res) => {
-    try {
-      const docs = await StaffDocument.find()
-        .populate("staffName", "fullName email position");
-      res.status(200).json(docs);
-    } catch (err) {
-      console.error("Error fetching staff documents:", err);
-      res.status(500).json({ error: err.message });
+// GET all documents
+const mongoose = require("mongoose");
+// GET all staff documents
+// Get staff documents
+router.get('/', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) => {
+  try {
+    let query = {};
+
+    if (req.user.role === "Staff") {
+      const hrId = req.user.hr?._id || req.user.hr;
+      if (!hrId) return res.status(400).json({ msg: "HR ID missing in token" });
+
+      query.staffName = new mongoose.Types.ObjectId(hrId); // ✅ use 'new'
     }
+
+    const documents = await StaffDocument.find(query)
+      .populate('staffName', 'fullName email')
+      .sort({ createdAt: -1 });
+
+    if (!documents.length) return res.status(404).json({ msg: "Not found" });
+
+    res.status(200).json(documents);
+  } catch (err) {
+    console.error("Error fetching staff documents:", err);
+    res.status(500).json({ error: err.message });
   }
-);
+});
 
 // ==================
 // UPDATE Staff Document (replace old files if uploaded)
@@ -116,6 +129,21 @@ router.put(
     }
   }
 );
+router.get("/staff/:id", verifyToken, async (req, res) => {
+  try {
+    const documents = await StaffDocument.find({ staffName: req.params.id })
+      .populate("staffName", "fullName position email");
+
+    if (!documents.length) {
+      return res.status(404).json({ msg: "Not found" });
+    }
+
+    res.json(documents);
+  } catch (error) {
+    res.status(500).json({ msg: "Server Error", error: error.message });
+  }
+});
+
 
 // ==================
 // DELETE Staff Document (delete Cloudinary files too)

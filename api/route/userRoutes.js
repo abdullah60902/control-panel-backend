@@ -10,17 +10,13 @@ const CarePlanning = require('../model/CarePlanning');
 const Hr = require('../model/Hr'); // ✅ Hr model import
 const JWT_SECRET = "do you know"; // In production use env variables
 const sendMail = require("../utils/mailer");
-
-
 // Signup route with special first user logic
 // Signup route with special first user logic
 router.post('/signup', async (req, res) => {
   const { fullName, email, role, password, confirmPassword, clients, hr, allowedPages } = req.body;
-
   if (!fullName || !email || !role || !password || !confirmPassword) {
     return res.status(400).json({ msg: 'All fields are required' });
   }
-
   if (password !== confirmPassword) {
     return res.status(400).json({ msg: 'Passwords do not match' });
   }
@@ -72,7 +68,6 @@ router.post('/signup', async (req, res) => {
         return res.status(400).json({ msg: "Invalid HR ID" });
       }
     }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = new User({

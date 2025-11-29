@@ -41,6 +41,13 @@ const performanceRoutes = require("./api/route/performance");
 const StaffDocumentRoutes =require('./api/route/staffDocuments');
 const templateRoutes =require('./api/route/templateRoutes');
 const medicationAdministrationRoute = require('./api/route/medicationAdministration');
+const staffPayRoutes = require('./api/route/staffPay');
+const shiftsRoutes = require('./api/route/shifts');
+
+app.use('/shifts', shiftsRoutes);
+app.use('/staffpay', staffPayRoutes);
+
+
 
 app.use('/medication-administration', medicationAdministrationRoute);
 app.use('/templates', templateRoutes);

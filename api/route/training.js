@@ -5,7 +5,6 @@ const { verifyToken, allowRoles } = require("../middleware/auth");
 const multer = require("multer");
 const { storage, cloudinary } = require("../utils/cloudinary");
 const upload = multer({ storage });
-
 /**
  * ===================================================
  *  📦 CREATE Training Record (with File Upload)
@@ -39,10 +38,13 @@ router.post(
     }
   }
 );
-
 /**
  * ===================================================
- *  📋 GET All Trainings
+ *  📋 GET All Trainings (Admin = all, Staff = own)
+ * ===================================================
+ *//**
+ * ===================================================
+ *  📋 GET All Trainings (Admin = all, Staff = own)
  * ===================================================
  */
 router.get(
@@ -51,16 +53,38 @@ router.get(
   allowRoles("Admin", "Staff", "External"),
   async (req, res) => {
     try {
-      const trainings = await Training.find().populate(
-        "staffMember",
-        "fullName email position"
-      );
+      let query = {};
+
+      // ⭐ Staff → Only their own training records
+      if (req.user.role === "Staff") {
+        const hrId = req.user.hr?._id || req.user.hr || req.user._id;
+        if (!hrId) return res.status(400).json({ message: "HR ID missing in token" });
+
+        query.staffMember = hrId;
+      }
+
+      // ⭐ External → Same logic as StaffDocument (only their own)
+      if (req.user.role === "External") {
+        const hrId = req.user.hr?._id || req.user.hr || req.user._id;
+        if (!hrId) return res.status(400).json({ message: "HR ID missing in token" });
+
+        query.staffMember = hrId;
+      }
+
+      const trainings = await Training.find(query)
+        .populate("staffMember", "fullName email position")
+        .sort({ createdAt: -1 });
+
+      if (!trainings.length)
+        return res.status(404).json({ message: "No training records found" });
+
       res.status(200).json(trainings);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   }
 );
+
 
 /**
  * ===================================================
@@ -210,6 +234,22 @@ router.put(
  *  ❌ DELETE Training (and Cloudinary files)
  * ===================================================
  */
+// GET all trainings of a staff member
+router.get("/staff/:id", async (req, res) => {
+  try {
+    const data = await Training.find({ staffMember: req.params.id })
+      .populate("staffMember")
+      .sort({ createdAt: -1 });
+
+    if (data.length === 0) {
+      return res.status(404).json([]);
+    }
+
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 router.delete(
   "/:id",
   verifyToken,
