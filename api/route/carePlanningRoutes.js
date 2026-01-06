@@ -6,9 +6,42 @@ const { verifyToken, allowRoles } = require("../middleware/auth");
 const { storage, cloudinary } = require("../utils/cloudinary");
 const multer = require("multer");
 const upload = multer({ storage });
-
 const Client = require('../model/client');
 const User = require('../model/usermodel');
+// Helper: safely parse carePlanData from form-data (could be JSON string or individual fields)
+function buildCarePlanDataFromBody(body) {
+  // If the client sent a JSON string for carePlanData (common with multipart/form-data)
+  if (body.carePlanData) {
+    try {
+      const parsed = typeof body.carePlanData === 'string' ? JSON.parse(body.carePlanData) : body.carePlanData;
+      // Normalize dates
+      if (parsed.dateCreated) parsed.dateCreated = new Date(parsed.dateCreated);
+      if (parsed.nextReviewDate) parsed.nextReviewDate = new Date(parsed.nextReviewDate);
+      return parsed;
+    } catch (err) {
+      // fallthrough to build from individual fields
+      console.warn('Could not parse carePlanData JSON:', err.message);
+    }
+  }
+  // Build from individual fields if provided separately
+  const cp = {};
+  const fields = [
+    'preparedBy','currentAbility','careAims','dateCreated','nextReviewDate',
+    'supportSteps','medicalDetails','sleepRoutine',
+    'dietType','fluidRequirements','mealtimeSupport','weighingFrequency','preferredScale',
+    'dentalAids','dentalContact','oralHygieneSchedule','monitoringNotes',
+    'notes','frequency','assistanceLevel',
+    // Additional plan instruction fields (commonly sent)
+    'washingInstructions','dressingInstructions','groomingInstructions','skinCareInstructions','productsNotes'
+  ];
+
+  for (const k of fields) {
+    if (body[k] !== undefined) cp[k] = body[k];
+  }
+  if (cp.dateCreated) cp.dateCreated = new Date(cp.dateCreated);
+  if (cp.nextReviewDate) cp.nextReviewDate = new Date(cp.nextReviewDate);
+  return cp;
+}
 // === ✅ GET ALERTS: Overdue & Due Today ===
 // === Get Alerts (Today + Overdue) ===
 // === ✅ GET ALERTS: Overdue & Due Today ===
@@ -58,6 +91,26 @@ router.get(
   }
 );
 
+// ✅ GET CarePlans by Client ID
+router.get(
+  "/client/:id",
+  verifyToken,
+  allowRoles("Admin", "Staff", "Client", "Family", "External"),
+  async (req, res) => {
+    try {
+      const plans = await CarePlanning.find({
+        client: req.params.id,   // ✅ FIX HERE
+      }).populate("client");
+
+      res.status(200).json(plans);
+    } catch (error) {
+      console.error("CarePlan by Client Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+
 
 // ✅ PUT — Mark as Reviewed
 // ✅ PUT — Mark as Reviewed (Only Admin, Staff)
@@ -101,10 +154,56 @@ router.post(
       console.log("FILES:", req.files);
       console.log("BODY:", req.body);
 
-      const carePlan = new CarePlanning({
-        ...req.body,
+      // Build carePlan payload and normalize dates / nested data
+      const carePlanPayload = {
+        // Basic fields expected at top-level
+        client: req.body.client,
+        planType: req.body.planType,
+        creationDate: req.body.creationDate ? new Date(req.body.creationDate) : undefined,
+        reviewDate: req.body.reviewDate ? new Date(req.body.reviewDate) : (req.body.nextReviewDate ? new Date(req.body.nextReviewDate) : undefined),
+        carePlanDetails: req.body.carePlanDetails,
+        careSetting: req.body.careSetting,
+        status: req.body.status,
+        signature: req.body.signature,
+        declineReason: req.body.declineReason,
+        // ✅ New Health & Wellbeing Fields
+        bristolStoolChart: req.body.bristolStoolChart,
+        mustScore: req.body.mustScore,
+        heartRate: req.body.heartRate,
+        mood: req.body.mood,
+        dailyLog: req.body.dailyLog,
         attachments: req.files?.map((file) => file.path),
-      });
+        // Nested object
+        carePlanData: buildCarePlanDataFromBody(req.body),
+      };
+
+      // Ensure required date fallbacks: if carePlanData.dateCreated available, set creationDate
+      if (!carePlanPayload.creationDate && carePlanPayload.carePlanData?.dateCreated) {
+        carePlanPayload.creationDate = carePlanPayload.carePlanData.dateCreated;
+      }
+      // If nextReviewDate exists inside carePlanData, use it for reviewDate if not already set
+      if (!carePlanPayload.reviewDate && carePlanPayload.carePlanData?.nextReviewDate) {
+        carePlanPayload.reviewDate = carePlanPayload.carePlanData.nextReviewDate;
+      }
+
+      // Map required top-level fields from nested carePlanData if the client sent them there
+      if (!carePlanPayload.client && carePlanPayload.carePlanData?.client) {
+        carePlanPayload.client = carePlanPayload.carePlanData.client;
+      }
+      if (!carePlanPayload.planType && carePlanPayload.carePlanData?.planType) {
+        carePlanPayload.planType = carePlanPayload.carePlanData.planType;
+      }
+
+      // Validate required fields and return a friendly error if missing
+      const missing = [];
+      if (!carePlanPayload.client) missing.push('client');
+      if (!carePlanPayload.planType) missing.push('planType');
+      if (missing.length > 0) {
+        console.warn('Validation failed: missing fields', missing);
+        return res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` });
+      }
+
+      const carePlan = new CarePlanning(carePlanPayload);
 
       const saved = await carePlan.save();
 
@@ -201,6 +300,43 @@ router.get(
   }
 );
 
+// === GET — Care Plans older than 6 months ===
+router.get(
+  "/older-than-six-months",
+  verifyToken,
+  allowRoles("Admin", "Staff", "Client", "External", "Family"),
+  async (req, res) => {
+    try {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 6);
+
+      let query = { creationDate: { $lt: cutoff } };
+
+      // Role-based visibility (same logic as `/`)
+      if (req.user.role === "Client") {
+        const user = await User.findById(req.user._id).populate("clients");
+        if (!user || !user.clients || user.clients.length === 0) return res.status(200).json([]);
+        const allowedClientIds = user.clients.map((c) => c._id);
+        query.client = { $in: allowedClientIds };
+      } else if (req.user.role === "External") {
+        // External users can only see clients they are attached to (if any)
+        if (req.user.clients && req.user.clients.length > 0) {
+          query.client = { $in: req.user.clients };
+        } else {
+          return res.status(200).json([]);
+        }
+      }
+
+      const plans = await CarePlanning.find(query).populate("client").sort({ creationDate: -1 });
+
+      res.status(200).json({ count: plans.length, cutoff: cutoff.toISOString(), plans });
+    } catch (error) {
+      console.error("❌ Fetch older-than-six-months Error:", error);
+      res.status(500).json({ error: "Failed to fetch care plans older than six months" });
+    }
+  }
+);
+
 // === READ ONE — Admin, Staff, Client/Family ===
 router.get("/:id", verifyToken, allowRoles("Admin", "Staff", "Client", "Family"), async (req, res) => {
   try {
@@ -270,16 +406,47 @@ router.put(
         }
       }
 
-     const updatedFields = {
-  ...req.body,
-  attachments: req.files?.map(file => file.path) || existingPlan.attachments,
-};
 
-// ✅ If reviewDate changed, reset reviewStatus
-if (req.body.reviewDate && req.body.reviewDate !== existingPlan.reviewDate.toISOString()) {
-  updatedFields.reviewStatus = "Pending Review";
-  updatedFields.reviewedOn = null;
-}
+      // Build update payload, preserving existing values where needed
+      const updatedFields = {
+        attachments: req.files?.map((file) => file.path) || existingPlan.attachments,
+      };
+
+      // Copy allowed top-level updatable fields if provided
+      // Copy allowed top-level updatable fields if provided
+      const topFields = [
+        'planType','creationDate','reviewDate','carePlanDetails','careSetting','status','signature','declineReason',
+        'bristolStoolChart', 'mustScore', 'heartRate', 'mood', 'dailyLog' // ✅ Added new fields
+      ];
+      for (const f of topFields) {
+        if (req.body[f] !== undefined) {
+          if (f === 'creationDate' || f === 'reviewDate') updatedFields[f] = new Date(req.body[f]);
+          else updatedFields[f] = req.body[f];
+        }
+      }
+
+      // Merge carePlanData
+      const incomingCPData = buildCarePlanDataFromBody(req.body);
+      updatedFields.carePlanData = { ...(existingPlan.carePlanData || {}), ...(incomingCPData || {}) };
+
+      // If carePlanData contains date changes that affect review scheduling, normalize top-level reviewDate and reset review status
+      if (incomingCPData && incomingCPData.nextReviewDate) {
+        const incomingNext = new Date(incomingCPData.nextReviewDate);
+        if (!existingPlan.reviewDate || incomingNext.getTime() !== new Date(existingPlan.reviewDate).getTime()) {
+          updatedFields.reviewDate = incomingNext;
+          updatedFields.reviewStatus = 'Pending Review';
+          updatedFields.reviewedOn = null;
+        }
+      }
+
+      // Also if explicit top-level reviewDate changed
+      if (req.body.reviewDate) {
+        const incomingReview = new Date(req.body.reviewDate);
+        if (!existingPlan.reviewDate || incomingReview.getTime() !== new Date(existingPlan.reviewDate).getTime()) {
+          updatedFields.reviewStatus = 'Pending Review';
+          updatedFields.reviewedOn = null;
+        }
+      }
 
 
       const updatedPlan = await CarePlanning.findByIdAndUpdate(

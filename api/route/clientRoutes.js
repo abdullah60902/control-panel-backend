@@ -2,24 +2,29 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Client = require('../model/client');
-const { verifyToken, allowRoles } = require('../middleware/auth');
 const User = require('../model/usermodel');
+const { verifyToken, allowRoles } = require('../middleware/auth');
+const multer = require("multer");
+const {  cloudinary,storage } = require("../utils/cloudinary");
+const upload = multer({ storage });
 
 // Total rooms from 1 to 50
 const TOTAL_ROOMS = Array.from({ length: 50 }, (_, i) => `${i + 1}`);
 
-// ✅ CREATE — Only Admin or Staff
+// ==========================================
+// ✅ CREATE CLIENT  (Admin, Staff)
+// ==========================================
 router.post('/', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) => {
-  const { fullName, age, roomNumber, careType, admissionDate } = req.body;
+  const { fullName, age, roomNumber, careType, admissionDate, ...restFields } = req.body;
 
   if (!fullName || !age || !roomNumber || !careType || !admissionDate) {
-    return res.status(400).json({ msg: "All fields are required" });
+    return res.status(400).json({ msg: "All required fields must be provided" });
   }
 
   try {
-    // Check if room is already taken
-    const roomInUse = await Client.findOne({ roomNumber });
-    if (roomInUse) {
+    // Check room availability
+    const roomExists = await Client.findOne({ roomNumber });
+    if (roomExists) {
       return res.status(400).json({ msg: `Room ${roomNumber} is already occupied.` });
     }
 
@@ -29,7 +34,8 @@ router.post('/', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) => 
       age,
       roomNumber,
       careType,
-      admissionDate: new Date(admissionDate)
+      admissionDate: new Date(admissionDate),
+      ...restFields // About Me fields and others
     });
 
     const savedClient = await newClient.save();
@@ -39,44 +45,32 @@ router.post('/', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) => 
   }
 });
 
-// ✅ READ ALL — Admin, Staff, Client/Family
-// ✅ READ ALL — Admin, Staff, Client, Family, External
+// ==========================================
+// ✅ GET ALL CLIENTS  (Admin, Staff, Client, Family, External)
+// ==========================================
 router.get('/', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family', 'External'), async (req, res) => {
   try {
     let clients;
 
-    // --- Client: only their assigned clients
-    if (req.user.role === 'Client') {
+    if (['Client', 'Family'].includes(req.user.role)) {
       const user = await User.findById(req.user._id).populate('clients');
       clients = user?.clients || [];
-    }
-
-    // --- Family: same as Client (assigned clients only)
-    else if (req.user.role === 'Family') {
-      const user = await User.findById(req.user._id).populate('clients');
-      clients = user?.clients || [];
-    }
-
-    // --- Admin, Staff, External: get all clients
-    else if (['Admin', 'Staff', 'External'].includes(req.user.role)) {
+    } else if (['Admin', 'Staff', 'External'].includes(req.user.role)) {
       clients = await Client.find();
-    }
-
-    // --- Unauthorized role
-    else {
+    } else {
       return res.status(403).json({ error: 'Unauthorized access' });
     }
 
-    const usedRooms = clients.map((client) => client.roomNumber);
-    const TOTAL_ROOMS = Array.from({ length: 50 }, (_, i) => (i + 1).toString());
+    const usedRooms = clients.map(c => c.roomNumber);
 
     res.status(200).json({
       clients,
       currentOccupancy: usedRooms.length,
+      totalRooms: TOTAL_ROOMS.length,
       totalAvailableRooms: TOTAL_ROOMS.length - usedRooms.length,
       totalClients: clients.length,
       occupancyPercentage: Math.round((usedRooms.length / TOTAL_ROOMS.length) * 100),
-      availableRooms: TOTAL_ROOMS.filter((r) => !usedRooms.includes(r)),
+      availableRooms: TOTAL_ROOMS.filter(r => !usedRooms.includes(r)),
       occupiedRooms: usedRooms
     });
   } catch (err) {
@@ -84,9 +78,10 @@ router.get('/', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family', 'E
   }
 });
 
-
-// ✅ READ ONE — Admin, Staff, Client/Family
-router.get('/:id', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family External'), async (req, res) => {
+// ==========================================
+// ✅ GET ONE CLIENT — (Admin, Staff, Client, Family, External)
+// ==========================================
+router.get('/:id', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family', 'External'), async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ msg: "Client not found" });
@@ -96,7 +91,9 @@ router.get('/:id', verifyToken, allowRoles('Admin', 'Staff', 'Client', 'Family E
   }
 });
 
-// ✅ UPDATE — Only Admin and Staff
+// ==========================================
+// ✅ UPDATE CLIENT — (Admin, Staff)
+// ==========================================
 router.put('/:id', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) => {
   try {
     const updatedClient = await Client.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -107,7 +104,9 @@ router.put('/:id', verifyToken, allowRoles('Admin', 'Staff'), async (req, res) =
   }
 });
 
-// ✅ DELETE — Only Admin
+// ==========================================
+// ✅ DELETE CLIENT — (Admin)
+// ==========================================
 router.delete('/:id', verifyToken, allowRoles('Admin'), async (req, res) => {
   try {
     const deletedClient = await Client.findByIdAndDelete(req.params.id);
@@ -117,5 +116,29 @@ router.delete('/:id', verifyToken, allowRoles('Admin'), async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ==========================================
+// ✅ UPLOAD / UPDATE CLIENT PROFILE IMAGE
+// ==========================================
+router.put('/:id/photo', verifyToken, allowRoles('Admin', 'Staff', 'Client'), upload.single('profileImage'), async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) return res.status(404).json({ msg: 'Client not found' });
+
+    if (!req.file || !req.file.path) {
+      return res.status(400).json({ msg: 'No image file uploaded' });
+    }
+
+    // Save Cloudinary URL in client document
+    client.profileImage = req.file.path;
+    await client.save();
+
+    res.status(200).json({ msg: 'Profile image updated', client });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error uploading image' });
+  }
+});
+
 
 module.exports = router;
